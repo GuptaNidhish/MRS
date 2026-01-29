@@ -77,7 +77,7 @@ with col2:
     if len(selected_idx_list) > 0:
         poster_path = data.iloc[selected_idx_list[0]]["poster_path"]
         if pd.notna(poster_path):
-            st.image(TMDB_BASE_URL + poster_path, use_column_width=True)
+            st.image(TMDB_BASE_URL + poster_path, width=1000)
 
 # Recommend button
 if st.button("Recommend"):
