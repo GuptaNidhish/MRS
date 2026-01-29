@@ -1,25 +1,5 @@
 __pycache__/
-*.pyc
-*.pkl
-*.index
-data/raw/
 data/
 models/
-
-# Python
-__pycache__/
-*.pyc
-.ipynb_checkpoints/
-
-# Virtual environment
-venv/
-.env/
-
-# Data (raw / large files)
-data/raw/
-data/interim/
-*.csv
-
-# OS files
-.DS_Store
 notebooks/.ipynb_checkpoints/
+
