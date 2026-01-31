@@ -15,9 +15,11 @@ from pathlib import Path
 # -----------------------------
 st.set_page_config(page_title="Movie Recommender", layout="wide")
 
-load_dotenv(dotenv_path=Path(".env"))
-
-TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+if "TMDB_API_KEY" in st.secrets:
+    TMDB_API_KEY = st.secrets["TMDB_API_KEY"]
+else:
+    load_dotenv()  # loads .env locally
+    TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TMDB_BASE = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
