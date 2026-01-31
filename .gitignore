@@ -8,3 +8,4 @@ models/
 notebooks/.ipynb_checkpoints/
 >>>>>>> parent of 82c4605 (removing notebooks from ignore)
 
+.env
