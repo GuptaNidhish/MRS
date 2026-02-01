@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 # -----------------------------
 st.set_page_config(page_title="Movie Recommender", layout="wide")
 
+# Load TMDB API key from secrets or .env
 if "TMDB_API_KEY" in st.secrets:
     TMDB_API_KEY = st.secrets["TMDB_API_KEY"]
 else:
@@ -32,12 +33,8 @@ if not TMDB_API_KEY:
 # -----------------------------
 @st.cache_resource
 def load_models():
-    index = faiss.read_index(
-        "models/models_including_lang/faiss_lang.index"
-    )
-    X_reduced = joblib.load(
-        "models/models_including_lang/movie_vectors_reduced_lang.pkl"
-    )
+    index = faiss.read_index("models/models_including_lang/faiss_lang.index")
+    X_reduced = joblib.load("models/models_including_lang/movie_vectors_reduced_lang.pkl")
     movies = pd.read_csv(
         "/Users/nidhishgupta/Desktop/Movie_recommendation_sysytem/data/processed/processed_language/reduce_processed_data_lang.csv"
     )
@@ -46,34 +43,38 @@ def load_models():
 index, X_reduced, movies = load_models()
 
 # -----------------------------
-# TMDB HELPERS (OTT ONLY)
+# TMDB HELPERS
 # -----------------------------
-def safe_requests_get(url, params=None, timeout=6):
+def fetch_ott_providers(movie_id, api_key, region="IN"):
+    base_url = "https://api.themoviedb.org/3"
+    provider_url = f"{base_url}/movie/{movie_id}/watch/providers"
+    params = {"api_key": api_key}
+    
     try:
-        r = requests.get(url, params=params, timeout=timeout)
-        r.raise_for_status()
-        return r.json()
-    except requests.exceptions.RequestException:
-        return {}
+        response = requests.get(provider_url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        results = data.get('results', {})
+        if region not in results:
+            return "No providers found"
+        
+        country_data = results[region]
+        parts = []
 
-def fetch_ott(tmdb_id, country="IN"):
-    if pd.isna(tmdb_id):
-        return "Not available"
+        if 'flatrate' in country_data:
+            streaming = ", ".join([p['provider_name'] for p in country_data['flatrate']])
+            parts.append(f"Streaming: {streaming}")
+        if 'rent' in country_data:
+            rent = ", ".join([p['provider_name'] for p in country_data['rent']])
+            parts.append(f"Rent: {rent}")
+        if 'buy' in country_data:
+            buy = ", ".join([p['provider_name'] for p in country_data['buy']])
+            parts.append(f"Buy: {buy}")
+        
+        return " | ".join(parts) if parts else "No providers found"
 
-    url = f"{TMDB_BASE}/movie/{int(tmdb_id)}/watch/providers"
-    params = {"api_key": TMDB_API_KEY}
-    data = safe_requests_get(url, params)
-
-    providers = (
-        data.get("results", {})
-        .get(country, {})
-        .get("flatrate", [])
-    )
-
-    if not providers:
-        return "Not available"
-
-    return ", ".join(p["provider_name"] for p in providers)
+    except requests.exceptions.RequestException as e:
+        return f"API Error: {e}"
 
 # -----------------------------
 # SESSION CACHE (OTT by TMDB ID)
@@ -81,14 +82,46 @@ def fetch_ott(tmdb_id, country="IN"):
 if "movie_ott_cache" not in st.session_state:
     st.session_state.movie_ott_cache = {}
 
-def fetch_movie_ott_cached(tmdb_id):
-    cache = st.session_state.movie_ott_cache
-    if tmdb_id in cache:
-        return cache[tmdb_id]
+def fetch_movie_ott(tmdb_id):
+    return fetch_ott_providers(tmdb_id, TMDB_API_KEY)
 
-    ott = fetch_ott(tmdb_id)
-    cache[tmdb_id] = ott
-    return ott
+# -----------------------------
+# PARALLEL OTT FETCH + PROGRESS
+# -----------------------------
+def fetch_ott_parallel_with_progress(tmdb_ids):
+    st.markdown(
+        """
+        <style>
+        .stProgress > div > div > div > div {
+            background-color: #E50914;
+        }
+        </style>
+        """, unsafe_allow_html=True
+    )
+    ott_details = {}
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_movie_ott, tmdb_id): tmdb_id for tmdb_id in tmdb_ids}
+        completed = 0
+
+        for future in as_completed(futures):
+            tmdb_id = futures[future]
+            try:
+                result = future.result()   # ✅ NOW THIS WILL NOT FAIL
+                ott_details[tmdb_id] = result
+            except Exception as e:
+                ott_details[tmdb_id] = f"Error: {e}"
+
+            completed += 1
+            progress_bar.progress(completed / len(tmdb_ids))
+            status_text.caption(f"Checking OTT availability ({completed}/{len(tmdb_ids)})")
+
+    progress_bar.empty()
+    status_text.empty()
+    return ott_details
+
 
 # -----------------------------
 # RECOMMENDER
@@ -106,114 +139,51 @@ def recommend(movie_title, k=10):
     return movies.iloc[indices[0][1:]]
 
 # -----------------------------
-# PARALLEL OTT FETCH + PROGRESS
-# -----------------------------
-def fetch_ott_parallel_with_progress(tmdb_ids):
-    st.markdown(
-        """
-        <style>
-        .stProgress > div > div > div > div {
-            background-color: red;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    ott_details = {}
-    total = len(tmdb_ids)
-    progress = st.progress(0)
-    text = st.empty()
-
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {
-            executor.submit(fetch_movie_ott_cached, tmdb_id): tmdb_id
-            for tmdb_id in tmdb_ids
-        }
-
-        completed = 0
-        for future in as_completed(futures):
-            tmdb_id = futures[future]
-            try:
-                ott_details[tmdb_id] = future.result()
-            except:
-                ott_details[tmdb_id] = "Not available"
-
-            completed += 1
-            progress.progress(completed / total)
-            text.caption(f"Fetching OTT info {completed}/{total}")
-            time.sleep(0.08)
-
-    progress.empty()
-    text.empty()
-    return ott_details
-
-# -----------------------------
 # UI
 # -----------------------------
 st.title("🎬 Movie Recommendation System")
 st.markdown("Content-based filtering using **SVD + FAISS**")
 st.divider()
 
-selected_movie = st.selectbox(
-    "Select a movie",
-    movies["title"].values
-)
-
-num_recommendations = st.slider(
-    "Number of recommendations",
-    5, 20, 10
-)
+selected_movie = st.selectbox("Select a movie", movies["title"].values)
+num_recommendations = st.slider("Number of recommendations", 5, 20, 10)
 
 if st.button("Recommend"):
+    # ----------------- Selected Movie -----------------
     selected_row = movies[movies["title"] == selected_movie].iloc[0]
-
     selected_poster = fetch_poster(selected_row["poster_path"])
     selected_rating = selected_row["imdb_rating"]
-    selected_ott = fetch_movie_ott_cached(selected_row["id"])
+    selected_tmdb_id = selected_row["id"]  # Make sure this is TMDB ID
+    selected_ott = fetch_movie_ott(selected_tmdb_id)
 
     left_col, right_col = st.columns([1, 3])
 
-    # SELECTED MOVIE
     with left_col:
         st.subheader("You Selected")
         if selected_poster:
             st.image(selected_poster, use_container_width=True)
-
         st.caption(selected_movie)
-
         with st.expander("View details"):
             st.markdown(f"**IMDb Rating:** {selected_rating}")
             st.markdown(f"**Available on:** {selected_ott}")
 
-    # RECOMMENDATIONS
+    # ----------------- Recommendations -----------------
     with right_col:
         st.subheader("Recommended Movies")
-
-        recommendations = recommend(
-            selected_movie,
-            num_recommendations
-        )
-
+        recommendations = recommend(selected_movie, num_recommendations)
         tmdb_ids = recommendations["id"].tolist()
         ott_dict = fetch_ott_parallel_with_progress(tmdb_ids)
-
+        for tmdb_id, ott in ott_dict.items():
+            st.session_state.movie_ott_cache[tmdb_id] = ott
         for i in range(0, len(recommendations), 5):
             row = recommendations.iloc[i:i+5]
             cols = st.columns(len(row))
-
             for col, (_, movie) in zip(cols, row.iterrows()):
                 with col:
                     poster = fetch_poster(movie["poster_path"])
                     if poster:
                         st.image(poster, use_container_width=True)
-
                     st.caption(movie["title"])
-
                     with st.expander("View details"):
-                        st.markdown(
-                            f"**IMDb Rating:** {movie['imdb_rating']}"
-                        )
-                        st.markdown(
-                            f"**Available on:** {ott_dict.get(movie['id'], 'Not available')}"
-                        )
+                        st.markdown(f"**IMDb Rating:** {movie['imdb_rating']}")
+                        st.markdown(f"**Available on:** {ott_dict.get(movie['id'], 'Not available')}")
