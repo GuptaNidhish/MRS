@@ -45,43 +45,54 @@ index, X_reduced, movies = load_models()
 # -----------------------------
 # TMDB HELPERS
 # -----------------------------
-def fetch_ott_providers(movie_id, api_key, region="IN"):
-    base_url = "https://api.themoviedb.org/3"
-    provider_url = f"{base_url}/movie/{movie_id}/watch/providers"
+def fetch_ott_providers(movie_id, api_key, region="IN", retries=3, delay=0.6):
+    provider_url = f"{TMDB_BASE}/movie/{movie_id}/watch/providers"
     params = {"api_key": api_key}
-    
-    try:
-        response = requests.get(provider_url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        results = data.get('results', {})
-        if region not in results:
-            return "No providers found"
-        
-        country_data = results[region]
-        parts = []
 
-        if 'flatrate' in country_data:
-            streaming = ", ".join([p['provider_name'] for p in country_data['flatrate']])
-            parts.append(f"Streaming: {streaming}")
-        if 'rent' in country_data:
-            rent = ", ".join([p['provider_name'] for p in country_data['rent']])
-            parts.append(f"Rent: {rent}")
-        if 'buy' in country_data:
-            buy = ", ".join([p['provider_name'] for p in country_data['buy']])
-            parts.append(f"Buy: {buy}")
-        
-        return " | ".join(parts) if parts else "No providers found"
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(provider_url, params=params, timeout=10)
+            response.raise_for_status()
 
-    except requests.exceptions.RequestException as e:
-        return f"API Error: {e}"
+            data = response.json()
+            results = data.get("results", {})
+
+            if region not in results:
+                return "Information Currently Unavailable"
+
+            country_data = results[region]
+            parts = []
+
+            if "flatrate" in country_data:
+                streaming = ", ".join(
+                    p["provider_name"] for p in country_data["flatrate"]
+                )
+                parts.append(f"Streaming: {streaming}")
+
+            if "rent" in country_data:
+                rent = ", ".join(
+                    p["provider_name"] for p in country_data["rent"]
+                )
+                parts.append(f"Rent: {rent}")
+
+            if "buy" in country_data:
+                buy = ", ".join(
+                    p["provider_name"] for p in country_data["buy"]
+                )
+                parts.append(f"Buy: {buy}")
+
+            return " | ".join(parts) if parts else "Information Currently Unavailable"
+
+        except requests.exceptions.RequestException:
+            if attempt == retries:
+                return "Information Currently Unavailable"
+            time.sleep(delay)  # ⏳ backoff before retry
 
 # -----------------------------
 # SESSION CACHE (OTT by TMDB ID)
 # -----------------------------
 if "movie_ott_cache" not in st.session_state:
     st.session_state.movie_ott_cache = {}
-
 def fetch_movie_ott(tmdb_id):
     return fetch_ott_providers(tmdb_id, TMDB_API_KEY)
 
@@ -102,8 +113,9 @@ def fetch_ott_parallel_with_progress(tmdb_ids):
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {executor.submit(fetch_movie_ott, tmdb_id): tmdb_id for tmdb_id in tmdb_ids}
+        time.sleep(0.15)  # ⭐ breaks burst → prevents reset
         completed = 0
 
         for future in as_completed(futures):
