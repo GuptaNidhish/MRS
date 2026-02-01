@@ -153,7 +153,7 @@ def recommend(movie_title, k=10):
 # -----------------------------
 # UI
 # -----------------------------
-st.title("🎬 Movie Recommendation System")
+st.title("Movie Recommendation System")
 st.markdown("Content-based filtering using **SVD + FAISS**")
 st.divider()
 
