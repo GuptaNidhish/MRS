@@ -33,10 +33,10 @@ if not TMDB_API_KEY:
 # -----------------------------
 @st.cache_resource
 def load_models():
-    index = faiss.read_index("models/models_including_lang/faiss_lang.index")
-    X_reduced = joblib.load("models/models_including_lang/movie_vectors_reduced_lang.pkl")
+    index = faiss.read_index("https://drive.google.com/file/d/18rqSnTCdNC7SzJkS0FG9KqxAx-ycOYe6/view?usp=sharing")
+    X_reduced = joblib.load("https://drive.google.com/file/d/1bSMohu1L4z_NsFWPl6gTs5nALYDYi0Gu/view?usp=sharing")
     movies = pd.read_csv(
-        "/Users/nidhishgupta/Desktop/Movie_recommendation_sysytem/data/processed/processed_language/reduce_processed_data_lang.csv"
+        "https://drive.google.com/file/d/1xhH8AoZZt_c5yD_ah211b2cPhmObVhes/view?usp=sharing"
     )
     return index, X_reduced, movies
 
