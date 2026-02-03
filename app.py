@@ -8,12 +8,34 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import os
 from dotenv import load_dotenv
-
+import gdown
 # -----------------------------
 # CONFIG
 # -----------------------------
 st.set_page_config(page_title="Movie Recommender", layout="wide")
+INDEX_PATH = "movie_index.faiss"
+VECTOR_PATH = "vectors_data.pkl"
+MOVIES_PATH = "movies.csv"
+if not os.path.exists(INDEX_PATH):
+    gdown.download(
+        id="18rqSnTCdNC7SzJkS0FG9KqxAx-ycOYe6",
+        output=INDEX_PATH,
+        quiet=False
+    )
 
+if not os.path.exists(VECTOR_PATH):
+    gdown.download(
+        id="1bSMohu1L4z_NsFWPl6gTs5nALYDYi0Gu",
+        output=VECTOR_PATH,
+        quiet=False
+    )
+
+if not os.path.exists(MOVIES_PATH):
+    gdown.download(
+        id="1xhH8AoZZt_c5yD_ah211b2cPhmObVhes",
+        output=MOVIES_PATH,
+        quiet=False
+    )
 # Load TMDB API key from secrets or .env
 if "TMDB_API_KEY" in st.secrets:
     TMDB_API_KEY = st.secrets["TMDB_API_KEY"]
@@ -33,11 +55,9 @@ if not TMDB_API_KEY:
 # -----------------------------
 @st.cache_resource
 def load_models():
-    index = faiss.read_index("https://drive.google.com/file/d/18rqSnTCdNC7SzJkS0FG9KqxAx-ycOYe6/view?usp=sharing")
-    X_reduced = joblib.load("https://drive.google.com/file/d/1bSMohu1L4z_NsFWPl6gTs5nALYDYi0Gu/view?usp=sharing")
-    movies = pd.read_csv(
-        "https://drive.google.com/file/d/1xhH8AoZZt_c5yD_ah211b2cPhmObVhes/view?usp=sharing"
-    )
+    index = faiss.read_index(INDEX_PATH)
+    X_reduced = joblib.load(VECTOR_PATH)
+    movies = pd.read_csv(MOVIES_PATH)
     return index, X_reduced, movies
 
 index, X_reduced, movies = load_models()
